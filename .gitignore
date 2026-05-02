@@ -1,0 +1,53 @@
+# --- Data (raw videos, AG annotations, extracted frames) ---
+dataset/
+frames_full/
+
+# --- Model weights / training checkpoints ---
+checkpoints/
+checkpoints_*/
+hf_cache/
+
+# --- Training artifacts (regenerable) ---
+logs/
+outputs/
+*.mp4
+*.png
+!docs/**/*.png
+
+# --- Delta SLURM job scripts (not portable) ---
+*.sh
+
+# --- Submission archive (this repo IS the submission) ---
+submission/
+submission.tar.gz
+
+# --- Python ---
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.pytest_cache/
+.ipynb_checkpoints/
+
+# --- IDE / editor ---
+.vscode/
+.vscode-server/
+.idea/
+.claude/
+*.swp
+*.swo
+
+# --- OS ---
+.DS_Store
+Thumbs.db
+
+# --- LaTeX intermediates ---
+*.aux
+*.log
+*.bbl
+*.blg
+*.out
+*.toc
+*.synctex.gz
+*.fdb_latexmk
+*.fls
