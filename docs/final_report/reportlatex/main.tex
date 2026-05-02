@@ -428,14 +428,12 @@ Figure~\ref{fig:qual}.}
 
 \begin{figure}[h]
 \centering
-\includegraphics[width=0.92\linewidth]{qualitative.png}
-\caption{Qualitative samples (object-aware prompt). Each row shows the
-graph-conditioned generation (left) and the text-only baseline (right)
-for the same prompt and seed. \texttt{41A89} is a clear graph win
-(refrigerator and food rendered only with the graph); \texttt{2S9LB}
-is a graph loss (chair lost in graph-cond); \texttt{WK9HE} and
-\texttt{8YD0O} are ties at $1.0$ recall, illustrating that text alone
-already solves object identity in many AG scenes.}
+\includegraphics[width=0.55\linewidth]{qualitative.png}
+\caption{Qualitative samples (object-aware prompt). Each pair shows
+the graph-conditioned generation (left) and the text-only baseline
+(right) for the same prompt and seed; the caption underneath the pair
+labels the corresponding test video and the recall delta. The same
+seed is used so any difference is attributable to the graph stream.}
 \label{fig:qual}
 \end{figure}
 
