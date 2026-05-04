@@ -354,6 +354,7 @@ Variant & Graph-cond. & Baseline & $\Delta$ & per-image (W/L/T) \\
 Generic prompt, double zero-init (broken)              & $0.4883$ & $0.4883$ & $\phantom{+}0.0000$ & $0/0/20$ \\
 Generic prompt, fixed zero-init                        & $0.5188$ & $0.4883$ & $+0.0305$  & $7/5/8$ \\
 Object-aware prompt, fixed zero-init                   & $0.8215$ & $0.8468$ & $-0.0252$ & $2/5/13$ \\
+Object-aware prompt, dense frames (Stage B)            & $0.8118$ & $0.8468$ & $-0.0350$ & $1/4/15$ \\
 \bottomrule
 \end{tabular}
 \end{table}
@@ -485,17 +486,32 @@ $2.6\text{B}$ backbone, $30\%$ graph-mix, and $60\!\times\!$ faster
 training on a single A100 (1.35\,s/step vs.\ 12\,s/step) lets the
 adapter genuinely converge.
 
-\paragraph{Ongoing work: full-frame-rate dataset.}
-While the experiments in Section~\ref{sec:exp} use only the
-$\sim 15$ AG-annotated frames per video, we are currently extracting
-every sixth frame from each Charades source video into a
-\texttt{frames\_full} directory ($\sim 50\!\times\!$ more samples per
-video, no new dataset). Combined with the object-aware prompt builder
-this is expected to give the adapter enough signal to disambiguate
-relations beyond the $20$-image evaluation we report here.  At the time
-of this writing $\sim 5\,000$ of $7\,427$ videos have finished
-extracting on a CPU partition; a fresh run with the larger dataset is
-the natural next step after this report's submission.
+\paragraph{Stage B: dense-frame retraining.}
+The experiments above (Stage A) use only the $\sim 15$ AG-annotated
+frames per video. We then extracted every sixth raw frame from each
+Charades source video into a \texttt{frames\_full} directory and
+modified \texttt{AGImageDataset} to sample any of those dense frames as
+the target image, snapping \texttt{target\_frame\_idx} to the nearest
+annotated frame so the temporal graph still indexes a valid node
+bucket. This raises the effective $(\text{frame},\text{graph})$ pair
+count by $\sim 6\!\times\!$ per video without any new annotation. Of
+the $7\,427$ AG-train videos we successfully covered $5\,566$ at the
+time of retraining (the remaining $\sim 25\%$ fall back to annotated
+frames). With the same adapter, mix ratio, learning rate and
+early-stopping policy as Stage A, validation MSE bottoms out at
+$0.0866$ at step $1\,000$---compared to $0.0874$ at step $4\,000$ for
+Stage A. The denser data therefore lets the adapter saturate
+$\sim\!4\!\times\!$ faster, with a marginally lower minimum, and total
+training wall-clock drops from $\sim\!3.5\,\text{h}$ to $2\,\text{h}\
+22\,\text{min}$ on the same A100. Object Recall on the same $20$ test
+graphs (Table~\ref{tab:recall}, row 4) is $0.8118$ for graph-cond vs.\
+$0.8468$ for the bit-identical text-only baseline---essentially the
+same saturated regime as row $3$, with a $1/4/15$ W/L/T split that is
+again dominated by ties at recall $\geq 0.8$. We read this consistently
+with the discussion of row $3$: dense data buys training-efficiency
+gains, but the metric is too coarse in the object-aware regime to
+expose them. We expect a relation-aware metric (future work item $3$
+below) to be the right place to look.
 
 % ============================================================
 \section{Related work}
@@ -549,16 +565,19 @@ solves object identity and Object Recall ceases to be the right metric;
 the residual job for the graph---relation binding and spatial layout
 ---requires evaluation tools we did not have time to build.
 
-Concrete extensions on our roadmap are: (1) a $\sim 50\!\times$ data
-scale-up by sampling every sixth raw frame of each Charades video and
-treating it as a target for the same temporal graph (extraction is
-already running, see Section~\ref{sec:exploration}); (2) Visual Genome
+A first roadmap item---a $\sim 6\!\times$ data scale-up by sampling
+every sixth raw Charades frame as a target for the same temporal
+graph---we executed and report as Stage B in
+Section~\ref{sec:exploration}. The dense data shrinks training time
+$\sim 4\!\times$ but does not move the saturated Object Recall, which
+matches our claim that Object Recall is the wrong instrument for the
+object-aware regime. Remaining extensions are: (1) Visual Genome
 static-graph pre-training of the adapter, with class-name alignment
 to bootstrap the graph-token-to-image mapping before AG fine-tune;
-(3) an explicit relation-correctness metric---e.g., a vision-language
+(2) an explicit relation-correctness metric---e.g., a vision-language
 model asked ``Is the person sitting on the chair?'' for each
 graph-cond image---to expose the gain that Object Recall hides in the
-saturated regime; and (4) an ablation that rewinds the temporal edges
+saturated regime; and (3) an ablation that rewinds the temporal edges
 to evaluate the actual contribution of the ``temporal'' part of the
 spatio-temporal graph for single-image generation.
 

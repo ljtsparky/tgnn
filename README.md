@@ -35,7 +35,12 @@ python src/ag_graph_dataset.py \
 # 2) Shape sanity check on a single batch (~3 min once SDXL is cached)
 python src/test_sdxl_dryrun.py
 
-# 3) Train: ~3-4h on A100, early-stops via patience=5 on val MSE
+# 3a) (optional, Stage B) Pre-extract every 6th raw Charades frame into
+#     dataset/ag/frames_full/. ~6x more (frame, graph) pairs per video;
+#     dataset_image.py auto-detects and prefers it when present.
+python src/extract_all_frames.py --stride 6 --workers 8
+
+# 3b) Train: ~3-4h (Stage A) or ~2.5h (Stage B) on A100, early-stops via patience=5 on val MSE
 python src/train_sdxl.py \
     --out_dir checkpoints_sdxl --batch_size 1 --graph_prob 0.30
 
@@ -53,9 +58,10 @@ python src/eval_sdxl_recall.py \
 |---|---:|---:|---:|
 | Generic prompt, double zero-init bug (broken) | 0.4883 | 0.4883 | 0.0000 |
 | Generic prompt, fixed zero-init | 0.5188 | 0.4883 | +0.0305 |
-| Object-aware prompt, fixed zero-init | 0.8215 | 0.8468 | −0.0252 |
+| Object-aware prompt, fixed zero-init (Stage A) | 0.8215 | 0.8468 | −0.0252 |
+| Object-aware prompt, dense frames (Stage B) | 0.8118 | 0.8468 | −0.0350 |
 
-Row 2 is the cleanest evidence the adapter learned a non-trivial graph-to-image mapping. Row 3 shows that with a rich prompt, baseline saturates and Object Recall ceases to be a discriminative metric — see report for full discussion.
+Row 2 is the cleanest evidence the adapter learned a non-trivial graph-to-image mapping. Rows 3–4 show that with a rich prompt, baseline saturates and Object Recall ceases to be a discriminative metric — see report for full discussion. Stage B adds a ~6× denser frame extraction (`frames_full`); val MSE bottoms at 0.0866 by step 1,000 vs.\ 0.0874 at step 4,000 for Stage A — i.e., ~4× faster convergence with no quality regression.
 
 Final report: `docs/final_report/reportlatex/main.tex` (compiles cleanly on Overleaf with default TeX Live; figures are pre-rendered PNGs in `docs/final_report/reportlatex/figures/`).
 
