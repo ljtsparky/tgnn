@@ -172,6 +172,11 @@ def build_prompt_from_graph(graph: Data, target_idx: int) -> str:
 class ImageDataConfig:
     charades_dir:  str = "/projects/bgnv/leatherman/tgnn/dataset/ag/videos/Charades_v1_480"
     frames_dir:    str = "/projects/bgnv/leatherman/tgnn/dataset/ag/frames"
+    # Optional dense extraction (every-Nth raw frame from Charades). When
+    # this directory contains a video's frames we use it for AG samples,
+    # giving ~50x more (frame, graph) pairs vs the AG-annotated frames.
+    frames_full_dir: str = "/projects/bgnv/leatherman/tgnn/dataset/ag/frames_full"
+
     graph_dir:     str = "/projects/bgnv/leatherman/tgnn/dataset/ag/graphs"
 
     # SDXL native resolution
@@ -280,7 +285,8 @@ class AGImageDataset(Dataset):
 
     def __init__(self, cfg: ImageDataConfig) -> None:
         self.cfg = cfg
-        self.frames_dir = Path(cfg.frames_dir)
+        self.frames_dir      = Path(cfg.frames_dir)
+        self.frames_full_dir = Path(cfg.frames_full_dir)
         self.transform = transforms.Compose([
             transforms.Lambda(lambda im: _square_crop(im, cfg.image_h)),
             transforms.ToTensor(),
@@ -289,6 +295,7 @@ class AGImageDataset(Dataset):
 
         graph_dir = Path(cfg.graph_dir)
         self.samples: List[Path] = []
+        n_dense = 0
         for pt in sorted(graph_dir.glob("*.pt")):
             try:
                 g = torch.load(pt, weights_only=False)
@@ -312,32 +319,53 @@ class AGImageDataset(Dataset):
                 continue
             self.samples.append(pt)
 
-        print(f"  AGImageDataset({cfg.split}): {len(self.samples)} videos")
+            ff_folder = self.frames_full_dir / f"{g.video_id}.mp4"
+            if ff_folder.exists() and any(ff_folder.glob("*.png")):
+                n_dense += 1
+
+        print(f"  AGImageDataset({cfg.split}): {len(self.samples)} videos "
+              f"({n_dense} with dense frames_full)")
 
     def __len__(self) -> int:
         return len(self.samples)
 
     def __getitem__(self, idx: int) -> Tuple[Data, Tensor, int, str]:
         graph: Data = torch.load(self.samples[idx], weights_only=False)
-
-        # Pick a random target frame from the annotated frames
         T = int(graph.num_frames)
-        target_idx_in_list = random.randrange(T)         # 0..T-1
-        target_frame_id    = int(graph.frame_ids[target_idx_in_list].item())
 
-        # Build object-aware prompt from target-frame sub-graph
+        # Stage-B: prefer dense frames_full when available (~50x more
+        # (frame, graph) pairs per video). Fall back to annotated frames.
+        ff_folder = self.frames_full_dir / f"{graph.video_id}.mp4"
+        ff_pngs = sorted(ff_folder.glob("*.png")) if ff_folder.exists() else []
+
+        png = None
+        if ff_pngs:
+            # Random dense frame; map its frame_id to the closest annotated
+            # frame so target_idx_in_list points at a real graph node bucket.
+            png = random.choice(ff_pngs)
+            try:
+                # filenames look like 'frame_000123.png' or '000123.png'
+                stem_digits = "".join(c for c in png.stem if c.isdigit())
+                dense_fid = int(stem_digits) if stem_digits else 0
+            except Exception:
+                dense_fid = 0
+            ann_ids = graph.frame_ids.tolist()
+            target_idx_in_list = int(min(range(T), key=lambda i: abs(int(ann_ids[i]) - dense_fid)))
+        else:
+            # Pick a random target frame from the annotated frames
+            target_idx_in_list = random.randrange(T)
+            target_frame_id    = int(graph.frame_ids[target_idx_in_list].item())
+            png = self.frames_dir / f"{graph.video_id}.mp4" / f"{target_frame_id:06d}.png"
+            if not png.exists():
+                cand = sorted((self.frames_dir / f"{graph.video_id}.mp4").glob("*.png"))
+                if not cand:
+                    img = torch.zeros(3, self.cfg.image_h, self.cfg.image_w)
+                    prompt = build_prompt_from_graph(graph, target_idx_in_list)
+                    return graph, img, target_idx_in_list, prompt
+                png = cand[0]
+
+        # Build object-aware prompt from the (closest) annotated target frame
         prompt = build_prompt_from_graph(graph, target_idx_in_list)
-
-        # Load the image at that frame
-        png = self.frames_dir / f"{graph.video_id}.mp4" / f"{target_frame_id:06d}.png"
-        if not png.exists():
-            # Fall back to any existing frame from the same video
-            cand = sorted((self.frames_dir / f"{graph.video_id}.mp4").glob("*.png"))
-            if not cand:
-                img = torch.zeros(3, self.cfg.image_h, self.cfg.image_w)
-                return graph, img, target_idx_in_list, prompt
-            png = cand[0]
-
         img = self.transform(Image.open(png).convert("RGB"))
         return graph, img, target_idx_in_list, prompt
 
